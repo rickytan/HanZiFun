@@ -81,7 +81,7 @@ PDF 导出是纯客户端矢量生成，是本仓库最复杂的子系统。关�
 - **SVG→PDF 转换**：`parseSvgPath` 支持 `M/L/H/V/Q/C/Z`，二次贝塞尔（`Q`）转三次（`C`）并缓存。`drawSvgElement` 递归处理 SVG 子元素，用 `elementMatrix`/`mapSvgPoint` 做 CTM 变换。
 - **Form XObject 复用**：`ensureGridForm` 把格子框线建成一个 Form 对象，每个单元格 `doFormObject("grid", m)` 引用；`ensureProgressiveForm` 把「字@步」的累加笔画也建成 Form 缓存（`progressiveFormCache`），`ensureGlyphForm` 缓存完整字形轮廓。这是控制多页 PDF 体积的关键——改动 PDF 导出时务必保持 Form 复用，避免回退为每格重画路径。
 - **内嵌楷体子集字体**：页眉/页脚/拼音等排版文本用内嵌 AR PL UKai CN（文鼎楷体）正楷真文本渲染，不再走笔顺轮廓或 helvetica（无中文会乱码）。构建时 `scripts/build-font.mjs` 从 Debian `fonts-arphic-ukai` 解包 `ukai.ttc`，用 hb-subset 把 face 0（UKai CN）预子集为 `vendor/fonts/kai.ttf`（约 6.4MB，全部 ~9600 笔顺字+标点+数字+拉丁+拼音）；导出时 `prepareKaiFont` 用 `vendor/hb-subset.wasm`（HarfBuzz）按页面实际用字二次裁剪到几十 KB，经 `addFileToVFS`/`addFont` 嵌入 jsPDF，`drawHtmlText`/`drawPdfText`/`drawSvgElement` 的文本统一用 `KaiTi`。字体未覆盖的极生僻字（约 74 字）回退到笔顺轮廓 `drawHanziForm`；`vendor/fonts/kai-chars.json` 是字符集清单，供运行时 fallback 判断。
-- **双入口**：`exportPdf`（右上角「导出 PDF」，直接下载本地 PDF）与 `printWorksheet`（浏览器打印对话框）是两个独立操作。移动端 `printWorksheet` 走 jsPDF 生成 → Web Share API 分享/打印降级链路。
+- **双入口**：`exportPdf`（右上角「导出 PDF」，直接下载本地 PDF）与 `printWorksheet`（浏览器打印对话框）是两个独立操作。移动端 `printWorksheet` 先用 `detectPrintPlatform` 判断 iOS/iPadOS/Android（含 iPadOS 桌面 UA），再用 jsPDF 生成 PDF 并通过 Web Share API 调起原生分享面板；分享不可用或被拒绝时回退到 `window.print()`，最后才下载 PDF。
 - **排版一致性**：PDF 每页物理尺寸、方向、分页必须与实时预览一致。`preparePdfPages` 会先确保预览 DOM 就绪并等待笔顺数据与字体加载完成。
 
 ### 构建管线

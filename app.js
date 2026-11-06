@@ -127,6 +127,7 @@ let activeChunkIds = new Set();
 const zipArchivePromises = new Map();
 const zipArchiveStates = new Map();
 let exportStatusTimer = 0;
+let printNoteTimer = 0;
 let strokePrefetchScheduled = false;
 let strokePrefetchCursor = 0;
 let pdfOperationActive = false;
@@ -1791,96 +1792,221 @@ async function exportPdf() {
   }
 }
 
-function shouldUsePdfPrintFallback() {
+function detectPrintPlatform() {
   const ua = navigator.userAgent || "";
-  const coarseSmallScreen = matchMedia("(pointer: coarse)").matches && matchMedia("(max-width: 900px)").matches;
-  return coarseSmallScreen || /Android|iPhone|iPad|iPod|Mobi|MiuiBrowser|XiaoMi/i.test(ua);
+  const uaData = navigator.userAgentData;
+  const platformName = uaData?.platform || navigator.platform || "";
+  const touchPoints = navigator.maxTouchPoints || 0;
+
+  if (/iPhone|iPad|iPod/i.test(ua) || /iPhone|iPad|iPod/i.test(platformName)) return { os: "ios", mobile: true };
+  // iPadOS 13+ reports a desktop Macintosh user agent. Without the touch-point
+  // check an iPad would take the desktop window.print() path instead of the
+  // system share sheet where AirPrint is available.
+  if (/Mac/i.test(platformName) && touchPoints > 1) return { os: "ipados", mobile: true };
+  if (/HarmonyOS|OpenHarmony/i.test(ua)) return { os: "harmony", mobile: true };
+  if (/Android/i.test(ua) || /Android/i.test(platformName)) return { os: "android", mobile: true };
+  if (uaData?.mobile === true || /Mobi|Mobile|Tablet/i.test(ua)) return { os: "mobile", mobile: true };
+  if (matchMedia("(pointer: coarse)").matches && matchMedia("(max-width: 900px)").matches) {
+    return { os: "mobile", mobile: true };
+  }
+  return { os: "desktop", mobile: false };
+}
+
+function showPrintNote(message, timeout = 7000) {
+  clearTimeout(printNoteTimer);
+  printNoteTimer = 0;
+  els.printNote.textContent = message;
+  els.printNote.hidden = false;
+  if (timeout > 0) {
+    printNoteTimer = setTimeout(() => {
+      els.printNote.hidden = true;
+      printNoteTimer = 0;
+    }, timeout);
+  }
+}
+
+function hidePrintNote() {
+  clearTimeout(printNoteTimer);
+  printNoteTimer = 0;
+  els.printNote.hidden = true;
+}
+
+function mobilePrintHint(platform) {
+  if (platform.os === "ios" || platform.os === "ipados") {
+    return "正在生成 PDF，完成后将尝试打开系统分享面板，请选择「打印」并选择打印机。";
+  }
+  if (platform.os === "android" || platform.os === "harmony") {
+    return "正在生成 PDF，完成后将尝试打开系统分享面板，请选择「打印」服务并选择打印机。";
+  }
+  return "正在生成 PDF，完成后将尝试打开系统分享面板，请在其中选择打印机。";
+}
+
+function savedPdfHint(platform, pageCount) {
+  if (platform.os === "ios" || platform.os === "ipados") {
+    return `已生成 ${pageCount} 页 PDF，请在下载文件中打开并选择「打印」`;
+  }
+  if (platform.os === "android" || platform.os === "harmony") {
+    return `已生成 ${pageCount} 页 PDF，请在下载内容中打开并选择「打印」`;
+  }
+  return `已生成 ${pageCount} 页 PDF，请打开文件后选择打印`;
+}
+
+function canSharePdfFile(file) {
+  if (typeof File === "undefined" || typeof navigator.share !== "function") return false;
+  if (typeof navigator.canShare !== "function") return true;
+  try {
+    return navigator.canShare({ files: [file] });
+  } catch {
+    return false;
+  }
+}
+
+async function sharePdfForPrint(pdf, filename) {
+  // navigator.share is the native system share sheet on iOS/iPadOS and Android.
+  // Both expose a Print target for PDF files (AirPrint on iOS; Android 11+
+  // Share-to-Print), so sharing the generated PDF lets the user pick a printer.
+  if (typeof File === "undefined" || typeof navigator.share !== "function") return "unsupported";
+  let file;
+  try {
+    const blob = pdf.output("blob");
+    file = new File([blob], filename, { type: "application/pdf" });
+  } catch (error) {
+    console.warn("生成分享文件失败", error);
+    return "unsupported";
+  }
+  if (!canSharePdfFile(file)) return "unsupported";
+  try {
+    await navigator.share({ files: [file], title: APP_TITLE });
+    return "shared";
+  } catch (error) {
+    if (error?.name === "AbortError") return "cancelled";
+    // Includes NotAllowedError when a slow PDF build outlives transient user
+    // activation. The caller falls back to the system print dialog.
+    console.warn("系统分享不可用", error);
+    return "failed";
+  }
+}
+
+function tryDirectPrint() {
+  return new Promise((resolve) => {
+    let settled = false;
+    let opened = false;
+    let timer = 0;
+    const onBeforePrint = () => {
+      opened = true;
+    };
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      window.removeEventListener("beforeprint", onBeforePrint);
+      resolve(result);
+    };
+    window.addEventListener("beforeprint", onBeforePrint, { once: true });
+    timer = setTimeout(() => finish(opened), 800);
+    try {
+      window.print();
+    } catch (error) {
+      console.warn("浏览器不支持直接打印", error);
+      finish(false);
+      return;
+    }
+    // Desktop browsers fire beforeprint synchronously; mobile ones may report
+    // it asynchronously, so the timer above is still needed there.
+    if (opened) finish(true);
+  });
 }
 
 async function shareOrSavePdfForPrint(pdf, filename) {
-  const canTryShare = typeof File !== "undefined" && navigator.share && navigator.canShare;
-  if (canTryShare) {
-    const blob = pdf.output("blob");
-    const file = new File([blob], filename, { type: "application/pdf" });
-    if (navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: APP_TITLE });
-        return "shared";
-      } catch (error) {
-        if (error?.name === "AbortError") return "cancelled";
-      }
-    }
-  }
+  const result = await sharePdfForPrint(pdf, filename);
+  if (result === "shared" || result === "cancelled") return result;
   pdf.save(filename);
   return "saved";
 }
 
-async function savePdfForManualPrint() {
+async function printMobileWorksheet(platform) {
   const finish = beginPdfOperation(els.printBtn);
-  if (!finish) return;
+  if (!finish) {
+    hidePrintNote();
+    return;
+  }
   try {
+    const canAttemptFileShare = typeof File !== "undefined" && typeof navigator.share === "function";
+    let printUnavailable = false;
+    if (!canAttemptFileShare) {
+      // In-app browsers such as WeChat do not expose the Web Share API. Try the
+      // native print dialog first instead of generating an unused PDF.
+      reportPdfProgress("正在打开系统打印…");
+      hidePrintNote();
+      if (await tryDirectPrint()) {
+        showExportStatus("已打开系统打印，请选择打印机");
+        return;
+      }
+      printUnavailable = true;
+    }
+
     reportPdfProgress("正在生成 PDF…");
     const { pdf, pageCount } = await buildPdfDocument();
-    const result = await shareOrSavePdfForPrint(pdf, exportFilename());
-    if (result === "shared") showExportStatus(`已生成 ${pageCount} 页 PDF，可在系统面板中选择打印`);
-    else if (result === "cancelled") showExportStatus("已取消系统分享");
-    else showExportStatus(`已生成 ${pageCount} 页 PDF，请打开后选择打印`);
+    const filename = exportFilename();
+    if (canAttemptFileShare) {
+      const shareResult = await sharePdfForPrint(pdf, filename);
+      if (shareResult === "shared") {
+        hidePrintNote();
+        showExportStatus(`已生成 ${pageCount} 页 PDF，可在系统分享面板中选择「打印」`);
+        return;
+      }
+      if (shareResult === "cancelled") {
+        hidePrintNote();
+        showExportStatus("已取消系统分享");
+        return;
+      }
+    }
+
+    // Sharing is unavailable or rejected. window.print() needs no user
+    // activation and opens the native print dialog in most mobile browsers.
+    hidePrintNote();
+    if (!printUnavailable && (await tryDirectPrint())) {
+      showExportStatus(`已打开系统打印，请选择打印机（共 ${pageCount} 页）`);
+      return;
+    }
+    pdf.save(filename);
+    showExportStatus(savedPdfHint(platform, pageCount));
   } catch (error) {
     console.error(error);
+    hidePrintNote();
     showExportStatus(error?.message || "打印失败，请尝试使用导出 PDF 功能", true);
   } finally {
     finish();
   }
 }
 
-function printWorksheet() {
-  if (shouldUsePdfPrintFallback()) {
-    els.printNote.textContent = "移动端浏览器通常不支持直接唤起系统打印，已改为生成 PDF 后打印。";
-    els.printNote.hidden = false;
-    setTimeout(() => { els.printNote.hidden = true; }, 5000);
-    savePdfForManualPrint();
+async function printWorksheet() {
+  const platform = detectPrintPlatform();
+  if (platform.mobile) {
+    showPrintNote(mobilePrintHint(platform), 0);
+    await printMobileWorksheet(platform);
     return;
   }
 
-  // Detect if window.print() actually works — some mobile browsers (e.g. Xiaomi)
-  // silently ignore it without opening any print dialog.
-  let printWorked = false;
-  const onBeforePrint = () => { printWorked = true; };
-  window.addEventListener("beforeprint", onBeforePrint, { once: true });
+  // Desktop prints the live document. Some browsers (including a few mobile
+  // ones) silently ignore window.print(), so detect beforeprint and fall back.
+  showPrintNote("打印时请选择与预览一致的纸张，并使用“实际大小 / 100%”，关闭浏览器页眉页脚。", 5000);
+  if (await tryDirectPrint()) return;
 
-  els.printNote.textContent = "打印时请选择与预览一致的纸张，并使用“实际大小 / 100%”，关闭浏览器页眉页脚。";
-  els.printNote.hidden = false;
-  setTimeout(() => { els.printNote.hidden = true; }, 5000);
-
-  window.print();
-
-  // Synchronous print (desktop): beforeprint fired during window.print()
-  if (printWorked) {
-    window.removeEventListener("beforeprint", onBeforePrint);
-    return;
+  hidePrintNote();
+  const finish = beginPdfOperation(els.printBtn);
+  if (!finish) return;
+  try {
+    reportPdfProgress("正在生成 PDF…");
+    const { pdf, pageCount } = await buildPdfDocument();
+    await shareOrSavePdfForPrint(pdf, exportFilename());
+    showExportStatus(`浏览器不支持直接打印，${pageCount} 页 PDF 已生成，请打开后选择打印`);
+  } catch (error) {
+    console.error(error);
+    showExportStatus(error?.message || "打印失败，请尝试使用导出 PDF 功能", true);
+  } finally {
+    finish();
   }
-
-  // Async print or unsupported: wait briefly, then fall back if needed
-  setTimeout(async () => {
-    window.removeEventListener("beforeprint", onBeforePrint);
-    if (printWorked) return;
-
-    // window.print() is unsupported — generate PDF for the user to print manually
-    els.printNote.hidden = true;
-    const finish = beginPdfOperation(els.printBtn);
-    if (!finish) return;
-    try {
-      reportPdfProgress("正在生成 PDF…");
-      const { pdf, pageCount } = await buildPdfDocument();
-      await shareOrSavePdfForPrint(pdf, exportFilename());
-      showExportStatus(`浏览器不支持直接打印，${pageCount} 页 PDF 已生成，请打开后选择打印`);
-    } catch (error) {
-      console.error(error);
-      showExportStatus(error?.message || "打印失败，请尝试使用导出 PDF 功能", true);
-    } finally {
-      finish();
-    }
-  }, 500);
 }
 
 function updateHeaderFieldVisibility() {
@@ -2006,7 +2132,13 @@ function init() {
     scheduleRender();
   });
   els.exportPdfBtn.addEventListener("click", exportPdf);
-  els.printBtn.addEventListener("click", printWorksheet);
+  els.printBtn.addEventListener("click", () => {
+    printWorksheet().catch((error) => {
+      console.error(error);
+      hidePrintNote();
+      showExportStatus(error?.message || "打印失败，请尝试使用导出 PDF 功能", true);
+    });
+  });
   els.pages.addEventListener("click", (event) => {
     if (settings.template !== "stroke") return;
     const svg = event.target.closest("svg.hanzi-cell");
