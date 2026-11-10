@@ -16,7 +16,7 @@
     "build": "npm run styles && npm run assets && npm run vendor && npm run data && node scripts/build.mjs",
     "build:ci": "npm run styles && npm run assets && npm run vendor && node scripts/build.mjs",
     "build:quick": "npm run styles && npm run assets && npm run vendor && npm run data:core && node scripts/build.mjs",
-    "check": "node --check app.js && node --check service-worker.js && node scripts/check-service-worker.mjs && node --check scripts/build-stroke-data.mjs && node --check scripts/build-content-templates.mjs && node --check scripts/build-icons.mjs && node --check scripts/build-vendor.mjs && node --check scripts/build-font.mjs && node --check scripts/build.mjs && node --check scripts/serve.mjs"
+    "check": "node --check app.js && node --check service-worker.js && node scripts/check-service-worker.mjs && node scripts/check-color-picker.mjs && node --check scripts/build-stroke-data.mjs && node --check scripts/build-content-templates.mjs && node --check scripts/build-icons.mjs && node --check scripts/build-vendor.mjs && node --check scripts/build-font.mjs && node --check scripts/build.mjs && node --check scripts/serve.mjs"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
