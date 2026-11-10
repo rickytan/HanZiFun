@@ -328,6 +328,30 @@ textarea:focus-visible {
   background: #ffffff;
 }
 
+.color-picker-trigger {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 5px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.color-picker-swatch {
+  width: 18px;
+  height: 28px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 3px;
+}
+
 .range-label {
   display: flex;
   justify-content: space-between;
@@ -1036,6 +1060,197 @@ svg .trace-glyph {
   opacity: 0.78;
 }
 
+.color-picker-backdrop {
+  position: fixed;
+  z-index: 110;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+  background: rgba(16, 28, 35, 0.5);
+}
+
+.color-picker {
+  width: min(360px, 100%);
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: #ffffff;
+  box-shadow: 0 14px 40px rgba(28, 40, 48, 0.2);
+}
+
+.color-picker-header,
+.color-picker-current,
+.color-picker-channel > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.color-picker-header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.color-picker-close {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #4a5963;
+  font-size: 26px;
+}
+
+.color-picker-close:hover {
+  background: #f0f4f6;
+}
+
+.color-picker-current {
+  justify-content: flex-start;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.color-picker-preview {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.color-picker-current label {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  color: #41515c;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.color-picker-current input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 8px 10px;
+  color: var(--ink);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.color-picker-current input[aria-invalid="true"] {
+  border-color: #b83d25;
+}
+
+.color-picker-hint {
+  min-height: 18px;
+  margin: 6px 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.color-picker-hint.is-invalid {
+  color: #9a3518;
+}
+
+.color-picker-swatches {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.color-picker-swatches button {
+  min-height: 44px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+}
+
+.color-picker-swatches button.is-selected {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.color-picker-swatches button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.color-picker-channels {
+  display: grid;
+  gap: 2px;
+  margin-top: 14px;
+}
+
+.color-picker-channel {
+  color: #41515c;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.color-picker-channel output {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.color-picker-channel input {
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+}
+
+.color-picker-channel input::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--channel-gradient);
+}
+
+.color-picker-channel input::-moz-range-track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--channel-gradient);
+}
+
+.color-picker-channel input::-webkit-slider-thumb {
+  width: 22px;
+  height: 22px;
+  margin-top: -7px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 2px solid #53656e;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.color-picker-channel input::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #53656e;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.color-picker-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.color-picker-actions button {
+  min-height: 44px;
+}
+
 [hidden] {
   display: none !important;
 }
@@ -1241,7 +1456,8 @@ svg .trace-glyph {
   .drawer-backdrop,
   .preview-toolbar,
   .print-note,
-  .export-status {
+  .export-status,
+  .color-picker-backdrop {
     display: none !important;
   }
 

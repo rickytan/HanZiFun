@@ -181,27 +181,27 @@
             </div>
           </div>
           <div class="grid-color-grid">
-            <label class="field color-field flex flex-col gap-1.5">
-              <span>外框</span>
+            <div class="field color-field flex flex-col gap-1.5">
+              <label for="gridFrameColor">外框</label>
               <input id="gridFrameColor" data-setting="gridFrameColor" type="color">
-            </label>
-            <label class="field color-field flex flex-col gap-1.5">
-              <span>中间十字</span>
+            </div>
+            <div class="field color-field flex flex-col gap-1.5">
+              <label for="gridCrossColor">中间十字</label>
               <input id="gridCrossColor" data-setting="gridCrossColor" type="color">
-            </label>
-            <label class="field color-field flex flex-col gap-1.5">
-              <span>对角线</span>
+            </div>
+            <div class="field color-field flex flex-col gap-1.5">
+              <label for="gridDiagonalColor">对角线</label>
               <input id="gridDiagonalColor" data-setting="gridDiagonalColor" type="color">
-            </label>
+            </div>
           </div>
-          <label class="field color-field flex flex-col gap-1.5 stroke-only-color">
-            <span>当前笔画</span>
+          <div class="field color-field flex flex-col gap-1.5 stroke-only-color">
+            <label for="strokeActiveColor">当前笔画</label>
             <input id="strokeActiveColor" data-setting="strokeActiveColor" type="color">
-          </label>
-          <label class="field color-field flex flex-col gap-1.5 guide-only-color">
-            <span>范字颜色</span>
+          </div>
+          <div class="field color-field flex flex-col gap-1.5 guide-only-color">
+            <label for="guideColor">范字颜色</label>
             <input id="guideColor" data-setting="guideColor" type="color">
-          </label>
+          </div>
           <div class="field-grid blank-layout-settings grid grid-cols-2 items-end gap-x-3">
             <div class="field flex flex-col gap-1.5">
               <label for="cellsPerRow">每行格数（0 自动）</label>
@@ -263,10 +263,10 @@
         <section class="control-section trace-style space-y-4">
           <h2>描红样式</h2>
           <div class="grid grid-cols-2 gap-x-3">
-            <label class="field color-field flex flex-col gap-1.5">
-              <span>描红颜色</span>
+            <div class="field color-field flex flex-col gap-1.5">
+              <label for="traceColor">描红颜色</label>
               <input id="traceColor" data-setting="traceColor" type="color">
-            </label>
+            </div>
             <label class="field flex flex-col gap-1.5">
               <span class="range-label">描红透明度 <output id="traceOpacityOutput"></output></span>
               <input id="traceOpacity" data-setting="traceOpacity" type="range" min="0.1" max="1" step="0.01">
@@ -348,6 +348,40 @@
     </div>
 
     <div class="export-status" id="exportStatus" role="status" aria-live="polite" hidden></div>
+
+    <div class="color-picker-backdrop" id="colorPickerBackdrop" hidden>
+      <section class="color-picker" id="colorPickerDialog" role="dialog" aria-modal="true" aria-labelledby="colorPickerTitle">
+        <div class="color-picker-header">
+          <h2 id="colorPickerTitle">选择颜色</h2>
+          <button class="color-picker-close" id="colorPickerClose" type="button" aria-label="关闭颜色选择">×</button>
+        </div>
+        <div class="color-picker-current">
+          <span class="color-picker-preview" id="colorPickerPreview" aria-hidden="true"></span>
+          <label for="colorPickerHex">十六进制颜色
+            <input id="colorPickerHex" type="text" maxlength="7" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="colorPickerHexHint">
+          </label>
+        </div>
+        <p class="color-picker-hint" id="colorPickerHexHint" aria-live="polite">输入 6 位十六进制颜色，例如 #176B87</p>
+        <div class="color-picker-swatches" id="colorPickerSwatches" role="group" aria-label="常用颜色"></div>
+        <div class="color-picker-channels">
+          <div class="color-picker-channel">
+            <div><label for="colorPickerRed">红（R）</label><output id="colorPickerRedOutput" for="colorPickerRed"></output></div>
+            <input id="colorPickerRed" type="range" min="0" max="255" step="1">
+          </div>
+          <div class="color-picker-channel">
+            <div><label for="colorPickerGreen">绿（G）</label><output id="colorPickerGreenOutput" for="colorPickerGreen"></output></div>
+            <input id="colorPickerGreen" type="range" min="0" max="255" step="1">
+          </div>
+          <div class="color-picker-channel">
+            <div><label for="colorPickerBlue">蓝（B）</label><output id="colorPickerBlueOutput" for="colorPickerBlue"></output></div>
+            <input id="colorPickerBlue" type="range" min="0" max="255" step="1">
+          </div>
+        </div>
+        <div class="color-picker-actions">
+          <button class="button primary" id="colorPickerDone" type="button">完成</button>
+        </div>
+      </section>
+    </div>
 
     <script src="data/content-templates.js"></script>
     <script src="data/strokes.js"></script>

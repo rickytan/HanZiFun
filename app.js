@@ -1159,9 +1159,24 @@ function readControl(control) {
   return control.value;
 }
 
+function colorControlName(control) {
+  const label = control.parentElement.querySelector("label").textContent.trim();
+  return label.endsWith("颜色") ? label : `${label}颜色`;
+}
+
+function syncColorTrigger(control) {
+  const trigger = control.nextElementSibling;
+  if (!trigger?.classList.contains("color-picker-trigger")) return;
+  const color = settingColor(control.dataset.setting).toUpperCase();
+  trigger.querySelector(".color-picker-swatch").style.backgroundColor = color;
+  trigger.querySelector(".color-picker-value").textContent = color;
+  trigger.setAttribute("aria-label", `选择${colorControlName(control)}，当前 ${color}`);
+}
+
 function syncSettingFromControl(control) {
   if (control.type === "radio" && !control.checked) return;
   settings[control.dataset.setting] = readControl(control);
+  syncColorTrigger(control);
   scheduleRender();
 }
 
@@ -1171,7 +1186,152 @@ function applySettingsToControls() {
     if (!(key in settings)) continue;
     if (control.type === "checkbox" || control.type === "radio") control.checked = control.type === "checkbox" ? Boolean(settings[key]) : control.value === String(settings[key]);
     else control.value = settings[key];
+    syncColorTrigger(control);
   }
+}
+
+function initHarmonyColorPicker() {
+  const controls = [...document.querySelectorAll('input[type="color"][data-setting]')];
+  if (!/HarmonyOS|OpenHarmony|ArkWeb/i.test(navigator.userAgent || "") && controls.every((control) => control.type === "color")) return;
+
+  const backdrop = document.querySelector("#colorPickerBackdrop");
+  const dialog = document.querySelector("#colorPickerDialog");
+  const title = document.querySelector("#colorPickerTitle");
+  const closeButton = document.querySelector("#colorPickerClose");
+  const doneButton = document.querySelector("#colorPickerDone");
+  const preview = document.querySelector("#colorPickerPreview");
+  const hexInput = document.querySelector("#colorPickerHex");
+  const hexHint = document.querySelector("#colorPickerHexHint");
+  const swatches = document.querySelector("#colorPickerSwatches");
+  const channels = ["Red", "Green", "Blue"].map((name) => ({
+    input: document.querySelector(`#colorPicker${name}`),
+    output: document.querySelector(`#colorPicker${name}Output`),
+  }));
+  const colors = [
+    "#000000", "#4b5563", "#9ca3af", "#ffffff",
+    "#e53935", "#f97316", "#eab308", "#16a34a",
+    "#0891b2", "#2563eb", "#7c3aed", "#db2777",
+  ];
+  let activeControl = null;
+  let activeTrigger = null;
+
+  for (const color of colors) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.color = color;
+    button.style.backgroundColor = color;
+    button.setAttribute("aria-label", `选择 ${color.toUpperCase()}`);
+    swatches.append(button);
+  }
+
+  function updatePicker(preserveHex = false) {
+    const color = activeControl.value.toLowerCase();
+    const values = [1, 3, 5].map((offset) => parseInt(color.slice(offset, offset + 2), 16));
+    preview.style.backgroundColor = color;
+    if (!preserveHex) hexInput.value = color.toUpperCase();
+    hexInput.setAttribute("aria-invalid", "false");
+    hexHint.textContent = "输入 6 位十六进制颜色，例如 #176B87";
+    hexHint.classList.remove("is-invalid");
+    channels.forEach(({ input, output }, index) => {
+      input.value = values[index];
+      output.value = values[index];
+      const start = [...values];
+      const end = [...values];
+      start[index] = 0;
+      end[index] = 255;
+      input.style.setProperty("--channel-gradient", `linear-gradient(to right, rgb(${start.join(", ")}), rgb(${end.join(", ")}))`);
+    });
+    for (const button of swatches.querySelectorAll("button")) {
+      const selected = button.dataset.color === color;
+      button.classList.toggle("is-selected", selected);
+      button.setAttribute("aria-pressed", String(selected));
+    }
+  }
+
+  function setColor(color, preserveHex = false) {
+    activeControl.value = color;
+    activeControl.dispatchEvent(new Event("input", { bubbles: true }));
+    updatePicker(preserveHex);
+  }
+
+  function closePicker() {
+    if (!activeControl) return;
+    backdrop.hidden = true;
+    activeTrigger.setAttribute("aria-expanded", "false");
+    activeTrigger.focus({ preventScroll: true });
+    activeControl = null;
+    activeTrigger = null;
+  }
+
+  for (const control of controls) {
+    const label = control.parentElement.querySelector("label");
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.id = `${control.id}Trigger`;
+    trigger.className = "color-picker-trigger";
+    trigger.setAttribute("aria-haspopup", "dialog");
+    trigger.setAttribute("aria-controls", "colorPickerDialog");
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.innerHTML = '<span class="color-picker-swatch" aria-hidden="true"></span><span class="color-picker-value"></span>';
+    control.hidden = true;
+    control.after(trigger);
+    label.htmlFor = trigger.id;
+    syncColorTrigger(control);
+    trigger.addEventListener("click", () => {
+      activeControl = control;
+      activeTrigger = trigger;
+      control.value = settingColor(control.dataset.setting);
+      title.textContent = `选择${colorControlName(control)}`;
+      trigger.setAttribute("aria-expanded", "true");
+      backdrop.hidden = false;
+      updatePicker();
+      closeButton.focus({ preventScroll: true });
+    });
+  }
+
+  hexInput.addEventListener("input", () => {
+    const match = /^#?([0-9a-f]{6})$/i.exec(hexInput.value.trim());
+    if (!match) {
+      hexInput.setAttribute("aria-invalid", "true");
+      hexHint.textContent = "颜色无效，请输入 6 位十六进制颜色，例如 #176B87";
+      hexHint.classList.add("is-invalid");
+      return;
+    }
+    setColor(`#${match[1].toLowerCase()}`, true);
+  });
+  for (const { input } of channels) {
+    input.addEventListener("input", () => {
+      const color = `#${channels.map((channel) => Number(channel.input.value).toString(16).padStart(2, "0")).join("")}`;
+      setColor(color);
+    });
+  }
+  swatches.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-color]");
+    if (button) setColor(button.dataset.color);
+  });
+  closeButton.addEventListener("click", closePicker);
+  doneButton.addEventListener("click", closePicker);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) closePicker();
+  });
+  dialog.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePicker();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = [...dialog.querySelectorAll("button:not(:disabled), input:not(:disabled)")];
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
 }
 
 function updateOutputs() {
@@ -2111,6 +2271,7 @@ function init() {
     const liveInputTypes = ["text", "textarea", "range", "number", "color"];
     control.addEventListener(liveInputTypes.includes(control.type) ? "input" : "change", () => syncSettingFromControl(control));
   }
+  initHarmonyColorPicker();
   els.controls.addEventListener("click", (event) => {
     const button = event.target.closest("[data-stepper-action]");
     if (button) adjustStepper(button);
